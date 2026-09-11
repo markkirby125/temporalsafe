@@ -1,0 +1,7 @@
+# TemporalSafe
+
+> Page-level flicker/flash reducer for photosensitive and migraine users. Comfort aid — not a medical device.
+
+- Source: https://github.com/markkirby125/temporalsafe
+- Userscript: built via `npm run build` → `temporalsafe.user.js`
+- Scope: page content motion only; cross-origin iframes and canvas/rAF loops are out of scope (best-effort).
