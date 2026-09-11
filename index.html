@@ -79,6 +79,8 @@
       const handle = startTemporalSafe({ doc: document });
       if (handle.allowed) {
         setStatus('This site is on the TemporalSafe allowlist — reductions are skipped.');
+      } else if (handle.toggledOff) {
+        setStatus('TemporalSafe is off.');
       } else {
         setStatus('TemporalSafe is running. Use the panel (top-right) to switch profile or turn it off.');
       }

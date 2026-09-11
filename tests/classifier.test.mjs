@@ -15,6 +15,8 @@ test('parseDuration handles s and ms forms', () => {
   assert.equal(parseDuration('1s'), 1000);
   assert.equal(parseDuration('0'), 0);
   assert.equal(parseDuration('nope'), 0);
+  assert.equal(parseDuration('2s, 0.2s'), 200);
+  assert.equal(parseDuration('0s, 300ms'), 300);
 });
 
 test('isFastFlashingStyle flags fast repeating animations and transitions', () => {

@@ -19,6 +19,10 @@ function makeEl(tag) {
     playCalls: 0,
     pauseCalls: 0,
     attributes: {},
+    listeners: {},
+    addEventListener(type, fn) {
+      (this.listeners[type] ||= []).push(fn);
+    },
     appendChild(child) {
       this.children.push(child);
       return child;

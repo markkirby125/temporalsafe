@@ -6,14 +6,20 @@
 
 export const PROFILES = { REDUCED: 'reduced', PHOTOSENSITIVE: 'photosensitive' };
 
-/** '0.2s' → 200, '300ms' → 300, '0' → 0. Returns 0 for anything unparseable. */
+/** '0.2s' → 200, '300ms' → 300, '0' → 0. Comma-separated lists take the fastest positive value. */
 export function parseDuration(str) {
   if (typeof str !== 'string') return 0;
-  const m = str.trim().match(/^([\d.]+)\s*(ms|s)?$/i);
-  if (!m) return 0;
-  const n = parseFloat(m[1]);
-  if (!Number.isFinite(n)) return 0;
-  return (m[2] || '').toLowerCase() === 'ms' ? n : n * 1000;
+  const values = str
+    .split(',')
+    .map((part) => {
+      const m = part.trim().match(/^([\d.]+)\s*(ms|s)?$/i);
+      if (!m) return 0;
+      const n = parseFloat(m[1]);
+      if (!Number.isFinite(n)) return 0;
+      return (m[2] || '').toLowerCase() === 'ms' ? n : n * 1000;
+    })
+    .filter((n) => n > 0);
+  return values.length ? Math.min(...values) : 0;
 }
 
 /** True when a CSS animation/transition is fast and repeats (flicker risk). */
@@ -50,12 +56,8 @@ export function classifyElement(el, style, profile = PROFILES.REDUCED) {
 export function detectBlink(samples) {
   const list = (samples || []).filter((s) => Number.isFinite(s?.t)).sort((a, b) => a.t - b.t);
   let transitions = 0;
-  let first = null;
   for (let i = 1; i < list.length; i++) {
-    if (list[i].visible !== list[i - 1].visible) {
-      if (first === null) first = list[i].t;
-      transitions += 1;
-    }
+    if (list[i].visible !== list[i - 1].visible) transitions += 1;
   }
   if (transitions < 3) return false;
   const windowStart = list[list.length - 1].t - 1000;
@@ -86,12 +88,25 @@ export class BlinkSampler {
     return detectBlink(samples);
   }
 
+  has(el) {
+    return this.map.has(el);
+  }
+
   reset(el) {
     this.map.delete(el);
+  }
+
+  /** Drop samples for elements no longer connected to the document. */
+  prune() {
+    for (const key of this.map.keys()) {
+      if (typeof key.isConnected === 'boolean' && !key.isConnected) this.map.delete(key);
+    }
   }
 }
 
 // --- reducer ----------------------------------------------------------------
+
+const REPLACED_TAGS = new Set(['video', 'img', 'input', 'audio', 'canvas', 'iframe', 'object', 'embed']);
 
 function coverElement(el, doc) {
   const cover = doc.createElement('div');
@@ -104,22 +119,43 @@ function coverElement(el, doc) {
   return cover;
 }
 
-function badgeElement(el, doc, text) {
-  const badge = doc.createElement('span');
+/**
+ * Badge is a native button: "Paused · Show" gives the per-element undo path.
+ * For replaced elements (video/img) children never render, so the badge is
+ * attached to the parent instead, keeping the parent positioned if static.
+ */
+function attachBadge(el, doc, text, onClick) {
+  const badge = doc.createElement('button');
+  badge.type = 'button';
   badge.className = 'temporalsafe-badge';
-  badge.textContent = text;
+  badge.textContent = `${text} · Show`;
   badge.style.cssText =
     'position:absolute;top:2px;left:2px;z-index:2;background:#101214;color:#e8e6e1;' +
-    'border:1px solid #d6d0c4;border-radius:4px;padding:1px 6px;font:12px system-ui,sans-serif;';
-  el.appendChild(badge);
-  return badge;
+    'border:1px solid #d6d0c4;border-radius:4px;padding:1px 6px;font:12px system-ui,sans-serif;cursor:pointer;';
+  badge.addEventListener('click', () => onClick?.());
+
+  const tag = (el.tagName || '').toLowerCase();
+  const host = REPLACED_TAGS.has(tag) && el.parentElement ? el.parentElement : el;
+  const prevPosition = host.style.position;
+  if (host !== el) {
+    const computed = doc.defaultView?.getComputedStyle?.(host) || {};
+    if (computed.position === 'static') host.style.position = 'relative';
+  }
+  host.appendChild(badge);
+  return {
+    remove: () => {
+      badge.remove();
+      if (host !== el) host.style.position = prevPosition;
+    },
+  };
 }
 
 /**
  * Apply the least destructive reduction for one element.
+ * onUndo(el) is called when the user clicks the badge's "Show" action.
  * Returns { undo } — never deletes content, never removes layout.
  */
-export function reduceElement(el, classification, profile, doc) {
+export function reduceElement(el, classification, profile, doc, onUndo) {
   if (!el || !classification) return null;
   const reason = classification.reason;
 
@@ -128,7 +164,7 @@ export function reduceElement(el, classification, profile, doc) {
     const prevTransition = el.style.transition;
     el.style.animationPlayState = 'paused';
     el.style.transition = 'none';
-    const badge = badgeElement(el, doc, 'Paused');
+    const badge = attachBadge(el, doc, 'Paused', () => onUndo?.(el));
     return {
       undo: () => {
         el.style.animationPlayState = prevPlayState;
@@ -143,7 +179,7 @@ export function reduceElement(el, classification, profile, doc) {
     const computed = doc.defaultView?.getComputedStyle?.(el) || {};
     if (computed.position === 'static') el.style.position = 'relative';
     const cover = coverElement(el, doc);
-    const badge = badgeElement(el, doc, 'Paused');
+    const badge = attachBadge(el, doc, 'Paused', () => onUndo?.(el));
     return {
       undo: () => {
         cover.remove();
@@ -157,7 +193,7 @@ export function reduceElement(el, classification, profile, doc) {
     if (profile === PROFILES.PHOTOSENSITIVE && typeof el.pause === 'function') {
       const wasPaused = el.paused;
       el.pause();
-      const badge = badgeElement(el, doc, 'Paused');
+      const badge = attachBadge(el, doc, 'Paused', () => onUndo?.(el));
       return {
         undo: () => {
           badge.remove();
@@ -167,7 +203,7 @@ export function reduceElement(el, classification, profile, doc) {
     }
     const prevMuted = el.muted;
     el.muted = true;
-    const badge = badgeElement(el, doc, 'Muted');
+    const badge = attachBadge(el, doc, 'Muted', () => onUndo?.(el));
     return {
       undo: () => {
         badge.remove();
@@ -322,10 +358,10 @@ export function createPanel({ host, allowlisted, onProfileChange, onScan, onOff,
   allowCheckbox.addEventListener('change', () => onAllowlistToggle?.(allowCheckbox.checked));
 
   root.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      onOff?.();
-    }
+    if (e.key !== 'Escape') return;
+    if (e.target?.tagName === 'INPUT') return;
+    e.preventDefault();
+    onOff?.();
   });
 
   return { root, setStatus, getProfile: () => (photoRadio.checked ? PROFILES.PHOTOSENSITIVE : PROFILES.REDUCED) };
@@ -368,9 +404,10 @@ export function startTemporalSafe(options = {}) {
 
   if (win.__temporalSafe) {
     win.__temporalSafe.off();
-    return win.__temporalSafe;
+    return { off: () => {}, allowed: false, toggledOff: true };
   }
 
+  const savedFocus = doc.activeElement;
   const style = injectPanelStyles(doc);
   const cspBlocked = !style.sheet;
   if (cspBlocked) {
@@ -383,13 +420,30 @@ export function startTemporalSafe(options = {}) {
   }
 
   let profile = options.profile || PROFILES.REDUCED;
+  const sampler = new BlinkSampler();
   const state = { reductions: new Map(), observer: null, off: null, allowed: false };
   win.__temporalSafe = state;
+
+  function undoOne(el) {
+    const reduction = state.reductions.get(el);
+    if (!reduction) return;
+    try {
+      reduction.undo();
+    } catch {
+      /* ignore */
+    }
+    state.reductions.delete(el);
+    sampler.reset(el);
+  }
 
   const panel = createPanel({
     host,
     allowlisted: false,
     onProfileChange: (p) => {
+      // Re-apply from scratch so stricter profiles upgrade already-reduced elements.
+      for (const el of state.reductions.keys()) {
+        undoOne(el);
+      }
       profile = p;
       scan();
     },
@@ -405,6 +459,7 @@ export function startTemporalSafe(options = {}) {
   (doc.body || doc.documentElement).appendChild(panel.root);
 
   function scan() {
+    sampler.prune();
     const all = Array.from(doc.querySelectorAll('*')).slice(0, 2000);
     let paused = 0;
     for (const el of all) {
@@ -416,11 +471,27 @@ export function startTemporalSafe(options = {}) {
         /* cross-origin or detached node */
       }
       const cls = classifyElement(el, style, profile);
-      if (!cls) continue;
-      const reduced = reduceElement(el, cls, profile, doc);
-      if (reduced) {
-        state.reductions.set(el, reduced);
-        paused += 1;
+      if (cls) {
+        const reduced = reduceElement(el, cls, profile, doc, (target) => undoOne(target));
+        if (reduced) {
+          state.reductions.set(el, reduced);
+          paused += 1;
+        }
+        continue;
+      }
+      // JS-driven blinking is sampled best-effort in the Photosensitive profile.
+      if (profile === PROFILES.PHOTOSENSITIVE) {
+        const visible = style.display !== 'none' && style.visibility !== 'hidden';
+        if (visible || sampler.has(el)) {
+          const flagged = sampler.record(el, visible);
+          if (flagged) {
+            const reduced = reduceElement(el, { risk: 'high', reason: 'blink' }, profile, doc, (target) => undoOne(target));
+            if (reduced) {
+              state.reductions.set(el, reduced);
+              paused += 1;
+            }
+          }
+        }
       }
     }
     panel.setStatus(
@@ -432,16 +503,15 @@ export function startTemporalSafe(options = {}) {
 
   function off() {
     if (state.observer) state.observer.disconnect();
-    for (const reduction of state.reductions.values()) {
-      try {
-        reduction.undo();
-      } catch {
-        /* ignore */
-      }
+    for (const el of state.reductions.keys()) {
+      undoOne(el);
     }
     state.reductions.clear();
-    document.getElementById?.(PANEL_ID)?.remove();
+    doc.getElementById?.(PANEL_ID)?.remove();
     win.__temporalSafe = null;
+    if (savedFocus && typeof savedFocus.focus === 'function') {
+      savedFocus.focus();
+    }
   }
 
   scan();
