@@ -1,13 +1,25 @@
 # TemporalSafe
 
-Page-level flicker and flash reducer for photosensitive, migraine, and vestibular users.
-**Comfort aid — not a medical device and not a diagnosis.**
+**Freeze page-level flicker and flash for photosensitive, migraine, and vestibular users.**
 
-> Status: **live** (2026-09-11) at https://markkirby125.github.io/temporalsafe/ — demo page and userscript build.
+Autoplaying video, blinking text, marquees, and fast CSS animations are common on the modern web. For photosensitive, migraine, or vestibular users, that motion can trigger symptoms or make a page unusable.
 
-TemporalSafe detects and freezes page-level flicker/flash — blinking text, marquees,
-fast CSS animations, and autoplaying video — and pauses or mutes them per element,
-always with a "Paused" badge and a per-element "Show" undo.
+TemporalSafe detects and freezes those elements, then pauses or mutes them per element. Each frozen item shows a "Paused" badge and a "Show" undo.
+
+**Status:** live at [markkirby125.github.io/temporalsafe/](https://markkirby125.github.io/temporalsafe/) — demo page and userscript build.
+
+> TemporalSafe is a comfort aid, not a medical device and not a diagnosis.
+
+## Features
+
+- **Per-element freeze** — pauses or mutes blinking text, marquees, fast CSS animations, and autoplaying video.
+- **Visible pause badge** — every frozen element gets a "Paused" indicator.
+- **Per-element undo** — click "Show" to re-enable a single element.
+- **Two profiles:**
+  - `Reduced` — default; honors `prefers-reduced-motion`.
+  - `Photosensitive` — opt-in; also freezes fast blinking text/cursors and pauses autoplay.
+- **Best-effort canvas protection** — attempts to freeze `requestAnimationFrame` loops without breaking the app.
+- **Cross-origin iframe labeling** — iframes are labeled but not modified.
 
 ## Scope (honest)
 
@@ -15,12 +27,19 @@ always with a "Paused" badge and a per-element "Show" undo.
 - Does **not** affect cross-origin iframes (labeled only).
 - Canvas / `requestAnimationFrame` animation is **best-effort** — never breaks the app.
 
-## Use
+## Quick start
 
-- **Userscript:** build with `npm run build`, install `temporalsafe.user.js` in Tampermonkey.
-- **Bookmarklet:** on the demo page, press "Copy bookmarklet", create a bookmark, click it on any page.
-- **Profiles:** `Reduced` (default, honors `prefers-reduced-motion`) and `Photosensitive`
-  (opt-in — also freezes fast blinking text/cursors and pauses autoplay).
+### Userscript
+
+Build the script, then install `temporalsafe.user.js` in Tampermonkey (or equivalent):
+
+```bash
+npm run build   # emits temporalsafe.user.js + temporalsafe.bookmarklet.js
+```
+
+### Bookmarklet
+
+On the demo page, press **Copy bookmarklet**, save it as a browser bookmark, then click it on any page.
 
 ## Develop
 
@@ -29,6 +48,14 @@ npm test        # node --test tests/*.test.mjs
 npm run build   # emits temporalsafe.user.js + temporalsafe.bookmarklet.js
 ```
 
+## Contributing
+
+Open an issue or submit a pull request. If you add a new animation class to the detector, include a test case.
+
 ## License
 
-MIT
+MIT License. See [LICENSE](LICENSE) for details.
+
+## Part of the Vision Apps toolkit
+
+TemporalSafe is one of four accessibility tools in the [Vision Apps](https://github.com/markkirby125/vision-apps) kit.
