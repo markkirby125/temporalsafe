@@ -3,7 +3,7 @@
 Page-level flicker and flash reducer for photosensitive, migraine, and vestibular users.
 **Comfort aid — not a medical device and not a diagnosis.**
 
-> Status: in build (2026-09-11). Not yet published.
+> Status: **live** (2026-09-11) at https://markkirby125.github.io/temporalsafe/ — demo page and userscript build.
 
 TemporalSafe detects and freezes page-level flicker/flash — blinking text, marquees,
 fast CSS animations, and autoplaying video — and pauses or mutes them per element,
